@@ -1,0 +1,7 @@
+{
+  "name": "PelastusVarasto",
+  "description": "Varastonhallinta pelastusharjoitusalueelle. QR-koodien luku ja saldon päivitys Google Sheetiin.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
