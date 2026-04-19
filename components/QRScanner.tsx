@@ -12,60 +12,74 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
   useEffect(() => {
-    // ID of the HTML element
     const elementId = "reader";
-    
-    // Create instance
-    const html5QrCode = new Html5Qrcode(elementId);
-    scannerRef.current = html5QrCode;
+    let html5QrCode: Html5Qrcode | null = null;
+    let isMounted = true;
 
     const startScanner = async () => {
       try {
-        // Configuration for the scanner
+        // Ensure element exists
+        const element = document.getElementById(elementId);
+        if (!element || !isMounted) return;
+
+        html5QrCode = new Html5Qrcode(elementId);
+        scannerRef.current = html5QrCode;
+
         const config = { 
           fps: 10, 
-          qrbox: { width: 250, height: 250 },
-          aspectRatio: 1.0
+          qrbox: (viewWidth: number, viewHeight: number) => {
+            const minEdge = Math.min(viewWidth, viewHeight);
+            const size = Math.floor(minEdge * 0.7);
+            return { width: size, height: size };
+          },
+          // Remove fixed aspectRatio to prevent stretching
         };
 
-        // Start scanning using the back camera (environment)
         await html5QrCode.start(
           { facingMode: "environment" }, 
           config,
-          (decodedText) => {
+          async (decodedText) => {
+            if (!isMounted) return;
+            
             // Success callback
-            // Stop scanning immediately to prevent duplicate reads
-            html5QrCode.stop().then(() => {
-              html5QrCode.clear();
+            try {
+              if (html5QrCode && html5QrCode.isScanning) {
+                await html5QrCode.stop();
+                html5QrCode.clear();
+              }
               onScanSuccess(decodedText);
-            }).catch(err => {
+            } catch (err) {
               console.error("Failed to stop scanner", err);
               onScanSuccess(decodedText);
-            });
+            }
           },
-          (errorMessage) => {
-            // Error callback (scanned frame but no QR code found)
-            // We ignore this to keep logs clean
-          }
+          () => {} // Ignore scan errors
         );
       } catch (err) {
-        console.error("Error starting scanner", err);
-        setScanError("Kameraa ei voitu käynnistää. Varmista, että annoit luvan kameran käyttöön.");
+        if (isMounted) {
+          console.error("Error starting scanner", err);
+          setScanError("Kameraa ei voitu käynnistää. Varmista, että annoit luvan kameran käyttöön.");
+        }
       }
     };
 
     // Small delay to ensure DOM is ready
-    setTimeout(startScanner, 100);
+    const timer = setTimeout(startScanner, 300);
 
-    // Cleanup function
     return () => {
-      if (scannerRef.current) {
-        if (scannerRef.current.isScanning) {
-          scannerRef.current.stop().then(() => {
-            scannerRef.current?.clear();
-          }).catch(err => console.error("Error stopping scanner cleanup", err));
+      isMounted = false;
+      clearTimeout(timer);
+      if (html5QrCode) {
+        if (html5QrCode.isScanning) {
+          html5QrCode.stop()
+            .then(() => html5QrCode?.clear())
+            .catch(err => console.error("Error stopping scanner cleanup", err));
         } else {
-           scannerRef.current.clear();
+          try {
+            html5QrCode.clear();
+          } catch (e) {
+            // Ignore clear errors if already cleared
+          }
         }
       }
     };
@@ -73,18 +87,18 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-0">
-      <div className="w-full h-full relative flex flex-col">
+    <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-0 overflow-hidden">
+      <div className="w-full h-full relative flex flex-col overflow-hidden">
         
         {/* Header Overlay */}
-        <div className="absolute top-0 left-0 right-0 z-10 p-4 flex justify-between items-center bg-gradient-to-b from-black/70 to-transparent text-white">
+        <div className="absolute top-0 left-0 right-0 z-20 p-4 flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent text-white">
           <div className="flex items-center gap-2">
-            <Camera size={20} />
-            <span className="font-bold">Skannaa QR</span>
+            <Camera size={20} className="text-cyan-400" />
+            <span className="font-bold tracking-tight">Skannaa QR-koodi</span>
           </div>
           <button 
             onClick={onClose} 
-            className="p-2 bg-white/20 rounded-full hover:bg-white/30 backdrop-blur-sm"
+            className="p-2 bg-white/10 rounded-full hover:bg-white/20 backdrop-blur-md border border-white/10 transition-colors"
           >
             <X size={24} />
           </button>
@@ -92,11 +106,24 @@ const QRScanner: React.FC<QRScannerProps> = ({ onScanSuccess, onClose }) => {
         
         {/* Scanner Viewport */}
         <div className="flex-1 bg-black relative flex items-center justify-center overflow-hidden">
-          <div id="reader" className="w-full h-full object-cover"></div>
+          {/* The reader element needs to be relatively sized for html5-qrcode to inject correctly */}
+          <div id="reader" className="w-full h-full [&>video]:object-cover"></div>
           
           {/* Visual guide overlay */}
-          <div className="absolute inset-0 border-2 border-white/30 pointer-events-none flex items-center justify-center">
-            <div className="w-64 h-64 border-2 border-red-500 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"></div>
+          <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
+            {/* Corner markers */}
+            <div className="relative w-64 h-64">
+              <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-cyan-400 rounded-tl-lg"></div>
+              <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-cyan-400 rounded-tr-lg"></div>
+              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-cyan-400 rounded-bl-lg"></div>
+              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-cyan-400 rounded-br-lg"></div>
+              
+              {/* Scanning line animation */}
+              <div className="absolute top-0 left-0 right-0 h-0.5 bg-cyan-400/50 shadow-[0_0_15px_rgba(34,211,238,0.8)] animate-scan-line"></div>
+            </div>
+            
+            {/* Darkened area outside the scanner box */}
+            <div className="absolute inset-0 shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]"></div>
           </div>
         </div>
 

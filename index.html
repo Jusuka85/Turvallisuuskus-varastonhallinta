@@ -17,6 +17,14 @@
         body { background-color: white; }
         .print-break-inside-avoid { break-inside: avoid; }
       }
+      @keyframes scan-line {
+        0% { top: 0%; }
+        100% { top: 100%; }
+      }
+      .animate-scan-line {
+        position: absolute;
+        animation: scan-line 2s linear infinite;
+      }
     </style>
   <script type="importmap">
 {

@@ -6,12 +6,22 @@ import QRScanner from './components/QRScanner';
 import UsageModal from './components/UsageModal';
 import LabelPrinter from './components/LabelPrinter';
 import OrganizationSelector from './components/OrganizationSelector';
+import UserNameSelector from './components/UserNameSelector';
 
 const STORAGE_ORG_KEY = 'rescue_inventory_org';
+const STORAGE_USER_KEY = 'rescue_inventory_last_user';
+const STORAGE_USER_MODE_KEY = 'rescue_inventory_user_mode';
 
 const App: React.FC = () => {
   const [organization, setOrganization] = useState<Organization | null>(() => {
     return localStorage.getItem(STORAGE_ORG_KEY) as Organization | null;
+  });
+  const [userName, setUserName] = useState<string | null>(() => {
+    return localStorage.getItem(STORAGE_USER_KEY);
+  });
+  const [isUserMode, setIsUserMode] = useState<boolean>(() => {
+    const stored = localStorage.getItem(STORAGE_USER_MODE_KEY);
+    return stored === null ? true : stored === 'true';
   });
   const [view, setView] = useState<AppView>(AppView.DASHBOARD);
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -22,6 +32,9 @@ const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusMsg, setStatusMsg] = useState<{type: 'success' | 'error', text: string} | null>(null);
   
+  const [logoClicks, setLogoClicks] = useState(0);
+  const [logoTimeout, setLogoTimeout] = useState<NodeJS.Timeout | null>(null);
+
   // State for Kiosk Mode Success Overlay
   const [showSyncSuccess, setShowSyncSuccess] = useState<boolean>(false);
 
@@ -83,6 +96,36 @@ const App: React.FC = () => {
     localStorage.setItem(STORAGE_ORG_KEY, org);
   };
 
+  const handleUserNameSelect = (name: string) => {
+    setUserName(name);
+    localStorage.setItem(STORAGE_USER_KEY, name);
+  };
+
+  const toggleUserMode = () => {
+    const newMode = !isUserMode;
+    setIsUserMode(newMode);
+    localStorage.setItem(STORAGE_USER_MODE_KEY, String(newMode));
+    if (newMode) setView(AppView.DASHBOARD);
+  };
+
+  const handleLogoClick = () => {
+    if (logoTimeout) clearTimeout(logoTimeout);
+    
+    const newCount = logoClicks + 1;
+    if (newCount >= 10) {
+      toggleUserMode();
+      setLogoClicks(0);
+      setLogoTimeout(null);
+    } else {
+      setLogoClicks(newCount);
+      const timeout = setTimeout(() => {
+        setLogoClicks(0);
+        setLogoTimeout(null);
+      }, 3000);
+      setLogoTimeout(timeout);
+    }
+  };
+
   const handleTransaction = async (qty: number, user: string, actionType: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION') => {
     if (!selectedItem) return;
     setIsSubmitting(true);
@@ -126,6 +169,7 @@ const App: React.FC = () => {
       case 'RETURN': return <ArrowDownLeft size={16} className="text-blue-500" />;
       case 'RESTOCK': return <Plus size={16} className="text-green-500" />;
       case 'CORRECTION': return <Wrench size={16} className="text-amber-500" />;
+      case 'REPORT_BROKEN': return <AlertCircle size={16} className="text-purple-500" />;
       default: return <div />;
     }
   };
@@ -136,6 +180,7 @@ const App: React.FC = () => {
       case 'RETURN': return 'Palautus';
       case 'RESTOCK': return 'Täydennys';
       case 'CORRECTION': return 'Korjaus';
+      case 'REPORT_BROKEN': return 'Rikki';
       default: return action;
     }
   }
@@ -144,8 +189,9 @@ const App: React.FC = () => {
   if (view === AppView.SIMPLE_SCANNER) {
     return (
       <div className="fixed inset-0 bg-black z-50 flex flex-col">
-        {/* Organization Selector Gate */}
+        {/* Setup Gates */}
         {!organization && <OrganizationSelector onSelect={handleOrganizationSelect} />}
+        {organization && !userName && <UserNameSelector organization={organization} onSelect={handleUserNameSelect} />}
 
         {/* Success Overlay */}
         {showSyncSuccess && (
@@ -184,6 +230,8 @@ const App: React.FC = () => {
               onConfirm={handleTransaction}
               onCancel={() => setSelectedItem(null)}
               isSubmitting={isSubmitting}
+              initialUser={userName || undefined}
+              isUserMode={isUserMode}
             />
           </div>
         )}
@@ -194,8 +242,9 @@ const App: React.FC = () => {
   // --- STANDARD DASHBOARD VIEW ---
   return (
     <div className="min-h-screen pb-20 max-w-lg mx-auto bg-gray-50 shadow-2xl overflow-hidden relative border-x border-gray-200">
-      {/* Organization Selector Gate */}
+      {/* Setup Gates */}
       {!organization && <OrganizationSelector onSelect={handleOrganizationSelect} />}
+      {organization && !userName && <UserNameSelector organization={organization} onSelect={handleUserNameSelect} />}
 
       {/* Header */}
       <header className="bg-white text-gray-800 p-6 shadow-sm sticky top-0 z-10 border-b border-gray-200">
@@ -205,50 +254,68 @@ const App: React.FC = () => {
              <img 
                src="./logo.png" 
                alt="Turvallisuuskeskus" 
-               className="h-12 object-contain mb-3" 
+               className="h-12 object-contain mb-3 cursor-default select-none active:opacity-50" 
+               onClick={handleLogoClick}
              />
              <h1 className="text-2xl font-bold tracking-tight text-gray-900">Harjoitusalue</h1>
              <div 
-               className="flex items-center gap-1.5 mt-0.5 cursor-pointer hover:opacity-70 transition-opacity"
-               onClick={() => setOrganization(null)}
-               title="Vaihda organisaatiota"
+               className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 cursor-pointer hover:opacity-70 transition-opacity"
+               onClick={() => {
+                 setOrganization(null);
+                 setUserName(null);
+               }}
+               title="Vaihda tietoja"
              >
-               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-               <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-wider">{organization || 'Valitse organisaatio'}</p>
+               <div className="flex items-center gap-1.5">
+                 <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                 <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-wider">{organization || 'Valitse organisaatio'}</p>
+               </div>
+               {userName && (
+                 <div className="flex items-center gap-1.5">
+                   <span className="w-2 h-2 rounded-full bg-cyan-500"></span>
+                   <p className="text-gray-500 text-[10px] font-semibold uppercase tracking-wider">{userName}</p>
+                 </div>
+               )}
              </div>
            </div>
            <div className="flex gap-2">
-            <button 
-                onClick={() => setView(AppView.SIMPLE_SCANNER)} 
-                className="p-2 text-cyan-700 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-full transition-colors"
-                title="Kioski-tila (Vain skannaus)"
-              >
-               <Maximize size={20} />
-             </button>
-            <button 
-                onClick={() => setView(AppView.PRINT_LABELS)} 
-                className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
-                title="Tulosta QR-tarrat"
-              >
-               <Printer size={20} />
-             </button>
+            {!isUserMode && (
+              <>
+                <button 
+                    onClick={() => setView(AppView.SIMPLE_SCANNER)} 
+                    className="p-2 text-cyan-700 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 rounded-full transition-colors"
+                    title="Kioski-tila (Vain skannaus)"
+                  >
+                   <Maximize size={20} />
+                 </button>
+                 <button 
+                    onClick={() => setView(AppView.PRINT_LABELS)} 
+                    className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
+                    title="Tulosta QR-tarrat"
+                  >
+                   <Printer size={20} />
+                 </button>
+              </>
+            )}
              <button onClick={loadData} className="p-2 text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
                <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
              </button>
            </div>
         </div>
 
-        {/* Stats Summary */}
-        <div className="flex gap-4">
-          <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-3 flex-1">
-             <span className="block text-2xl font-bold text-gray-900">{items.length}</span>
-             <span className="text-xs text-cyan-800 font-medium">Nimikettä</span>
+        {/* Stats Summary - Hidden in User Mode */}
+        {!isUserMode && (
+          <div className="flex gap-4">
+            <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-3 flex-1">
+               <span className="block text-2xl font-bold text-gray-900">{items.length}</span>
+               <span className="text-xs text-cyan-800 font-medium">Nimikettä</span>
+            </div>
+             <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-3 flex-1">
+               <span className="block text-2xl font-bold text-gray-900">{logs.length}</span>
+               <span className="text-xs text-cyan-800 font-medium">Tapahtumaa</span>
+            </div>
           </div>
-           <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-3 flex-1">
-             <span className="block text-2xl font-bold text-gray-900">{logs.length}</span>
-             <span className="text-xs text-cyan-800 font-medium">Tapahtumaa</span>
-          </div>
-        </div>
+        )}
       </header>
 
       {/* Main Content Area */}
@@ -360,33 +427,45 @@ const App: React.FC = () => {
 
       </main>
 
-      {/* Navigation Bar */}
-      <nav className="fixed bottom-0 w-full max-w-lg bg-white border-t border-gray-200 flex justify-around p-2 pb-4 z-20">
-        <button 
-          onClick={() => setView(AppView.DASHBOARD)}
-          className={`p-2 flex flex-col items-center gap-1 min-w-[64px] ${view === AppView.DASHBOARD ? 'text-cyan-600' : 'text-gray-400'}`}
-        >
-          <ClipboardList size={24} />
-          <span className="text-[10px] font-medium">Varasto</span>
-        </button>
-        
-        <div className="relative -top-6">
+      {/* Navigation Bar - Hidden in User Mode */}
+      {!isUserMode && (
+        <nav className="fixed bottom-0 w-full max-w-lg bg-white border-t border-gray-200 flex justify-around p-2 pb-4 z-20">
           <button 
-            onClick={() => setView(AppView.SCANNER)}
-            className="bg-gray-900 text-white p-4 rounded-full shadow-lg hover:bg-gray-800 hover:scale-105 transition-all"
+            onClick={() => setView(AppView.DASHBOARD)}
+            className={`p-2 flex flex-col items-center gap-1 min-w-[64px] ${view === AppView.DASHBOARD ? 'text-cyan-600' : 'text-gray-400'}`}
           >
-            <QrCode size={28} />
+            <ClipboardList size={24} />
+            <span className="text-[10px] font-medium">Varasto</span>
           </button>
-        </div>
+          
+          <div className="relative -top-6">
+            <button 
+              onClick={() => setView(AppView.SCANNER)}
+              className="bg-gray-900 text-white p-4 rounded-full shadow-lg hover:bg-gray-800 hover:scale-105 transition-all"
+            >
+              <QrCode size={28} />
+            </button>
+          </div>
 
+          <button 
+            onClick={() => setView(AppView.LOGS)}
+            className={`p-2 flex flex-col items-center gap-1 min-w-[64px] ${view === AppView.LOGS ? 'text-cyan-600' : 'text-gray-400'}`}
+          >
+            <History size={24} />
+            <span className="text-[10px] font-medium">Logi</span>
+          </button>
+        </nav>
+      )}
+
+      {/* Floating Scan Button for User Mode */}
+      {isUserMode && view === AppView.DASHBOARD && (
         <button 
-          onClick={() => setView(AppView.LOGS)}
-          className={`p-2 flex flex-col items-center gap-1 min-w-[64px] ${view === AppView.LOGS ? 'text-cyan-600' : 'text-gray-400'}`}
+          onClick={() => setView(AppView.SCANNER)}
+          className="fixed bottom-8 right-8 bg-gray-900 text-white p-5 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all z-30 border-4 border-white"
         >
-          <History size={24} />
-          <span className="text-[10px] font-medium">Logi</span>
+          <QrCode size={32} />
         </button>
-      </nav>
+      )}
 
       {/* Overlays */}
       {view === AppView.SCANNER && (
@@ -409,6 +488,8 @@ const App: React.FC = () => {
           onConfirm={handleTransaction}
           onCancel={() => setSelectedItem(null)}
           isSubmitting={isSubmitting}
+          initialUser={userName || undefined}
+          isUserMode={isUserMode}
         />
       )}
     </div>

@@ -1,27 +1,30 @@
 import React, { useState } from 'react';
 import { InventoryItem } from '../types';
-import { Check, X, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, PlusCircle, Wrench } from 'lucide-react';
+import { Check, X, AlertTriangle, ArrowDownToLine, ArrowUpFromLine, PlusCircle, Wrench, AlertOctagon } from 'lucide-react';
 
 interface UsageModalProps {
   item: InventoryItem;
-  onConfirm: (quantity: number, user: string, actionType: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION') => void;
+  onConfirm: (quantity: number, user: string, actionType: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION' | 'REPORT_BROKEN') => void;
   onCancel: () => void;
   isSubmitting: boolean;
+  initialUser?: string;
+  isUserMode?: boolean;
 }
 
-type ActionMode = 'USE' | 'RETURN' | 'RESTOCK' | 'CORRECTION';
+type ActionMode = 'USE' | 'RETURN' | 'RESTOCK' | 'CORRECTION' | 'REPORT_BROKEN';
 
 const STORAGE_USER_KEY = 'rescue_inventory_last_user';
 
-const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSubmitting }) => {
+const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSubmitting, initialUser, isUserMode }) => {
   const [amount, setAmount] = useState<string>('1');
   
-  // Initialize user from LocalStorage if available
+  // Initialize user from prop or LocalStorage
   const [user, setUser] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_USER_KEY) || '';
+    return initialUser || localStorage.getItem(STORAGE_USER_KEY) || '';
   });
   
   const [mode, setMode] = useState<ActionMode>('USE');
+  const [reportNote, setReportNote] = useState<string>('');
 
   const handleModeChange = (newMode: ActionMode) => {
     setMode(newMode);
@@ -29,6 +32,8 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
     // If switching to others, reset to 1
     if (newMode === 'CORRECTION') {
       setAmount(item.quantity.toString());
+    } else if (newMode === 'REPORT_BROKEN') {
+      setAmount('1');
     } else {
       setAmount('1');
     }
@@ -41,8 +46,9 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
     
     // For standard modes, amount must be positive.
     // For Correction, it can be 0 (if stock is empty).
-    if (mode !== 'CORRECTION' && inputVal <= 0) return;
+    if (mode !== 'CORRECTION' && mode !== 'REPORT_BROKEN' && inputVal <= 0) return;
     if (mode === 'CORRECTION' && inputVal < 0) return; // Stock can't be negative
+    if (mode === 'REPORT_BROKEN' && inputVal <= 0) return;
 
     if (!user.trim()) return;
 
@@ -55,6 +61,11 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
       finalAmount = -inputVal;
     } else if (mode === 'RETURN' || mode === 'RESTOCK') {
       finalAmount = inputVal;
+    } else if (mode === 'REPORT_BROKEN') {
+      // Reporting broken doesn't necessarily change stock in this simple logic, 
+      // but we could make it -inputVal if we assume they are removed.
+      // Let's assume reporting broken REMOVES them from usable stock.
+      finalAmount = -inputVal;
     } else if (mode === 'CORRECTION') {
       // Calculate difference: Target - Current
       // Example: Current 12, True Stock (Input) 10. Difference = -2.
@@ -66,7 +77,11 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
       }
     }
 
-    onConfirm(finalAmount, user, mode);
+    const userWithNote = mode === 'REPORT_BROKEN' && reportNote.trim() 
+      ? `${user} (Syy: ${reportNote})` 
+      : user;
+
+    onConfirm(finalAmount, userWithNote, mode);
   };
 
   const currentStock = item.quantity;
@@ -83,6 +98,7 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
       case 'RETURN': return 'bg-blue-600';
       case 'RESTOCK': return 'bg-green-600';
       case 'CORRECTION': return 'bg-amber-500';
+      case 'REPORT_BROKEN': return 'bg-purple-600';
       default: return 'bg-gray-600';
     }
   };
@@ -93,6 +109,7 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
       case 'RETURN': return 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300';
       case 'RESTOCK': return 'bg-green-600 hover:bg-green-700 disabled:bg-green-300';
       case 'CORRECTION': return 'bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-black';
+      case 'REPORT_BROKEN': return 'bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300';
     }
   };
 
@@ -102,6 +119,7 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
       case 'RETURN': return 'Kirjaa Palautus';
       case 'RESTOCK': return 'Kirjaa Täydennys';
       case 'CORRECTION': return 'Korjaa Saldo';
+      case 'REPORT_BROKEN': return 'Raportoi Rikki';
     }
   };
 
@@ -131,7 +149,7 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
           </div>
 
           {/* Mode Toggle */}
-          <div className="grid grid-cols-4 bg-gray-100 p-1 rounded-lg gap-1">
+          <div className={`grid ${isUserMode ? 'grid-cols-3' : 'grid-cols-5'} bg-gray-100 p-1 rounded-lg gap-1`}>
             <button
               type="button"
               onClick={() => handleModeChange('USE')}
@@ -150,30 +168,46 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
                <ArrowDownToLine size={16} />
               Palauta
             </button>
+            
             <button
               type="button"
-              onClick={() => handleModeChange('RESTOCK')}
+              onClick={() => handleModeChange('REPORT_BROKEN')}
               className={`py-2 text-[10px] font-medium rounded-md transition-all flex flex-col items-center gap-1
-                ${mode === 'RESTOCK' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
+                ${mode === 'REPORT_BROKEN' ? 'bg-white text-purple-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
             >
-               <PlusCircle size={16} />
-              Lisää
+               <AlertOctagon size={16} />
+              Rikki
             </button>
-            <button
-              type="button"
-              onClick={() => handleModeChange('CORRECTION')}
-              className={`py-2 text-[10px] font-medium rounded-md transition-all flex flex-col items-center gap-1
-                ${mode === 'CORRECTION' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
-            >
-               <Wrench size={16} />
-              Korjaa
-            </button>
+
+            {!isUserMode && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('RESTOCK')}
+                  className={`py-2 text-[10px] font-medium rounded-md transition-all flex flex-col items-center gap-1
+                    ${mode === 'RESTOCK' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
+                >
+                   <PlusCircle size={16} />
+                  Lisää
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleModeChange('CORRECTION')}
+                  className={`py-2 text-[10px] font-medium rounded-md transition-all flex flex-col items-center gap-1
+                    ${mode === 'CORRECTION' ? 'bg-white text-amber-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
+                >
+                   <Wrench size={16} />
+                  Korjaa
+                </button>
+              </>
+            )}
           </div>
 
           {/* Inputs */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              {mode === 'CORRECTION' ? 'Todellinen määrä hyllyssä' : `Määrä (${item.unit})`}
+              {mode === 'CORRECTION' ? 'Todellinen määrä hyllyssä' : 
+               mode === 'REPORT_BROKEN' ? 'Rikkoutuneiden määrä' : `Määrä (${item.unit})`}
             </label>
             <input
               type="number"
@@ -183,6 +217,19 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
               className="w-full text-center text-3xl font-bold p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none border-gray-300"
               required
             />
+            
+            {mode === 'REPORT_BROKEN' && (
+              <div className="mt-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Vian kuvaus (vapaaehtoinen)</label>
+                <textarea
+                  value={reportNote}
+                  onChange={(e) => setReportNote(e.target.value)}
+                  placeholder="Mikä on rikki?"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none text-sm"
+                  rows={2}
+                />
+              </div>
+            )}
             
             {/* Warning / Info Messages */}
             {isStockLow && (
@@ -231,7 +278,8 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
             {isSubmitting ? 'Tallennetaan...' : (
               <>
                 <Check size={20} />
-                {mode === 'CORRECTION' ? 'Korjaa' : 'Tallenna'}
+                {mode === 'CORRECTION' ? 'Korjaa' : 
+                 mode === 'REPORT_BROKEN' ? 'Raportoi' : 'Tallenna'}
               </>
             )}
           </button>

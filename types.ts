@@ -14,7 +14,7 @@ export interface UsageLog {
   itemName: string;
   user: string;
   amountChanged: number;
-  action: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION';
+  action: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION' | 'REPORT_BROKEN';
 }
 
 export interface ApiResponse<T> {
@@ -23,7 +23,7 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
-export type Organization = 'Pelastuslaitos vakinaiset' | 'Pelastuslaitos sopimuspalokunnat' | 'LSPEL' | 'Turvallisuuskeskus';
+export type Organization = string;
 
 // Enum for App View State
 export enum AppView {
