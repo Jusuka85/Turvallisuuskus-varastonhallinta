@@ -45,7 +45,7 @@ const OrganizationSelector: React.FC<OrganizationSelectorProps> = ({ onSelect })
       <div className="w-full max-w-md space-y-8">
         <div className="text-center space-y-2">
           <img 
-            src="./logo.png" 
+            src="/logo.png" 
             alt="Turvallisuuskeskus" 
             className="h-16 mx-auto object-contain mb-6" 
           />
