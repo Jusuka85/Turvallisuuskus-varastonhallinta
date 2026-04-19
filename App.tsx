@@ -252,7 +252,7 @@ const App: React.FC = () => {
            <div>
              {/* Logo image */}
              <img 
-               src="./logo.png" 
+               src="/logo.png" 
                alt="Turvallisuuskeskus" 
                className="h-12 object-contain mb-3 cursor-default select-none active:opacity-50" 
                onClick={handleLogoClick}
