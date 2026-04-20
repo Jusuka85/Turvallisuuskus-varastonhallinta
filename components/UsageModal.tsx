@@ -9,13 +9,14 @@ interface UsageModalProps {
   isSubmitting: boolean;
   initialUser?: string;
   isUserMode?: boolean;
+  defaultMode?: ActionMode;
 }
 
 type ActionMode = 'USE' | 'RETURN' | 'RESTOCK' | 'CORRECTION' | 'REPORT_BROKEN';
 
 const STORAGE_USER_KEY = 'rescue_inventory_last_user';
 
-const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSubmitting, initialUser, isUserMode }) => {
+const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSubmitting, initialUser, isUserMode, defaultMode }) => {
   const [amount, setAmount] = useState<string>('1');
   
   // Initialize user from prop or LocalStorage
@@ -23,7 +24,9 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
     return initialUser || localStorage.getItem(STORAGE_USER_KEY) || '';
   });
   
-  const [mode, setMode] = useState<ActionMode>('USE');
+  const [mode, setMode] = useState<ActionMode>(() => {
+    return defaultMode || 'USE';
+  });
   const [reportNote, setReportNote] = useState<string>('');
 
   const handleModeChange = (newMode: ActionMode) => {
@@ -114,8 +117,9 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
   };
 
   const getTitle = () => {
+    const isBorrowable = item.itemType === 'borrowable';
     switch (mode) {
-      case 'USE': return 'Kirjaa Otto';
+      case 'USE': return isBorrowable ? 'Lainaa Tuote' : 'Kirjaa Otto';
       case 'RETURN': return 'Kirjaa Palautus';
       case 'RESTOCK': return 'Kirjaa Täydennys';
       case 'CORRECTION': return 'Korjaa Saldo';
@@ -138,8 +142,17 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
           
           {/* Item Info */}
           <div className="mb-4">
-            <h4 className="text-xl font-bold text-gray-800">{item.name}</h4>
-            <p className="text-sm text-gray-500 uppercase tracking-wide">{item.category}</p>
+            <div className="flex justify-between items-start">
+              <div>
+                <h4 className="text-xl font-bold text-gray-800">{item.name}</h4>
+                <p className="text-sm text-gray-500 uppercase tracking-wide">{item.category}</p>
+              </div>
+              {item.itemType === 'borrowable' && (
+                <span className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-tight">
+                  Lainattava
+                </span>
+              )}
+            </div>
             <div className="mt-2 flex items-center gap-2">
               <span className="text-sm font-semibold text-gray-600">Nykyinen varasto:</span>
               <span className={`text-lg font-mono font-bold ${item.quantity < 5 ? 'text-red-500' : 'text-gray-800'}`}>
@@ -157,7 +170,7 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
                 ${mode === 'USE' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
             >
               <ArrowUpFromLine size={16} />
-              Ota
+              {item.itemType === 'borrowable' ? 'Lainaa' : 'Ota'}
             </button>
             <button
               type="button"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { QrCode, ClipboardList, History, Search, RefreshCw, AlertCircle, Printer, ArrowDownLeft, ArrowUpRight, Plus, Wrench, Maximize, Minimize, CheckCircle } from 'lucide-react';
+import { QrCode, ClipboardList, History, Search, RefreshCw, AlertCircle, Printer, ArrowDownLeft, ArrowUpRight, Plus, Wrench, Maximize, Minimize, CheckCircle, Library } from 'lucide-react';
 import { InventoryItem, UsageLog, AppView, Organization } from './types';
 import { api } from './services/api';
 import QRScanner from './components/QRScanner';
@@ -156,6 +156,30 @@ const App: React.FC = () => {
     }
     
     setIsSubmitting(false);
+  };
+
+  const getActiveBorrows = () => {
+    if (!userName || !organization) return [];
+    const userWithOrg = `[${organization}] ${userName}`;
+    
+    const borrowMap: Record<string, { item: InventoryItem | undefined, balance: number }> = {};
+    
+    logs.filter(l => l.user === userWithOrg).forEach(log => {
+      if (!borrowMap[log.itemId]) {
+        borrowMap[log.itemId] = { 
+          item: items.find(i => i.id === log.itemId), 
+          balance: 0 
+        };
+      }
+      borrowMap[log.itemId].balance += log.amountChanged;
+    });
+    
+    return Object.values(borrowMap)
+      .filter(b => b.balance < 0 && b.item && b.item.itemType === 'borrowable')
+      .map(b => ({
+        ...b.item!,
+        borrowedQuantity: Math.abs(b.balance)
+      }));
   };
 
   const filteredItems = items.filter(i => 
@@ -378,10 +402,18 @@ const App: React.FC = () => {
                       className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center active:bg-gray-50 cursor-pointer"
                     >
                       <div>
-                        <h3 className="font-semibold text-gray-800">{item.name}</h3>
-                        <span className="inline-block px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-md mt-1">
-                          {item.category}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-gray-800">{item.name}</h3>
+                          {item.itemType === 'borrowable' && <Library size={12} className="text-blue-500" />}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1 leading-none">
+                          <span className="inline-block px-1.5 py-0.5 bg-gray-100 text-gray-500 text-[9px] rounded font-bold uppercase tracking-wider">
+                            {item.category}
+                          </span>
+                          {item.itemType === 'borrowable' && (
+                            <span className="text-[9px] text-blue-600 font-extrabold uppercase tracking-widest bg-blue-50 px-1.5 py-0.5 rounded">Lainattava</span>
+                          )}
+                        </div>
                       </div>
                       <div className="text-right">
                         <div className={`text-xl font-mono font-bold ${item.quantity < 5 ? 'text-red-500' : 'text-gray-800'}`}>
@@ -394,6 +426,44 @@ const App: React.FC = () => {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {view === AppView.BORROWS && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-800">Omat lainat</h2>
+              <span className="text-xs bg-blue-100 text-blue-700 font-bold px-2 py-1 rounded-md">AKTIIVISET</span>
+            </div>
+            
+            <div className="space-y-3">
+              {getActiveBorrows().length === 0 ? (
+                <div className="bg-white p-8 rounded-xl border border-dashed border-gray-300 text-center text-gray-500">
+                  <Library className="mx-auto mb-3 opacity-20" size={48} />
+                  <p className="text-sm">Sinulla ei ole tällä hetkellä aktiivisia lainoja.</p>
+                </div>
+              ) : (
+                getActiveBorrows().map(borrow => (
+                  <div 
+                    key={borrow.id} 
+                    onClick={() => setSelectedItem(borrow)}
+                    className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-l-blue-500 border-y border-r border-gray-100 flex justify-between items-center active:bg-gray-50 cursor-pointer"
+                  >
+                    <div>
+                      <h3 className="font-semibold text-gray-800">{borrow.name}</h3>
+                      <p className="text-xs text-gray-400 mt-0.5">Lainattu määrä: {borrow.borrowedQuantity} {borrow.unit}</p>
+                    </div>
+                    <button className="bg-blue-50 text-blue-600 font-bold px-4 py-2 rounded-lg text-sm">
+                      Palauta
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            <p className="text-[10px] text-gray-400 text-center mt-6 uppercase tracking-wider">
+              Lainat näkyvät tässä, kunnes palautat ne ohjelmassa.
+            </p>
           </div>
         )}
 
@@ -427,45 +497,46 @@ const App: React.FC = () => {
 
       </main>
 
-      {/* Navigation Bar - Hidden in User Mode */}
-      {!isUserMode && (
-        <nav className="fixed bottom-0 w-full max-w-lg bg-white border-t border-gray-200 flex justify-around p-2 pb-4 z-20">
-          <button 
-            onClick={() => setView(AppView.DASHBOARD)}
-            className={`p-2 flex flex-col items-center gap-1 min-w-[64px] ${view === AppView.DASHBOARD ? 'text-cyan-600' : 'text-gray-400'}`}
-          >
-            <ClipboardList size={24} />
-            <span className="text-[10px] font-medium">Varasto</span>
-          </button>
-          
-          <div className="relative -top-6">
-            <button 
-              onClick={() => setView(AppView.SCANNER)}
-              className="bg-gray-900 text-white p-4 rounded-full shadow-lg hover:bg-gray-800 hover:scale-105 transition-all"
-            >
-              <QrCode size={28} />
-            </button>
-          </div>
-
-          <button 
-            onClick={() => setView(AppView.LOGS)}
-            className={`p-2 flex flex-col items-center gap-1 min-w-[64px] ${view === AppView.LOGS ? 'text-cyan-600' : 'text-gray-400'}`}
-          >
-            <History size={24} />
-            <span className="text-[10px] font-medium">Logi</span>
-          </button>
-        </nav>
-      )}
-
-      {/* Floating Scan Button for User Mode */}
-      {isUserMode && view === AppView.DASHBOARD && (
+      {/* Navigation Bar - Hidden in User Mode (unless modified for borrows) */}
+      <nav className="fixed bottom-0 w-full max-w-lg bg-white border-t border-gray-200 flex justify-around p-2 pb-4 z-20">
         <button 
-          onClick={() => setView(AppView.SCANNER)}
-          className="fixed bottom-8 right-8 bg-gray-900 text-white p-5 rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all z-30 border-4 border-white"
+          onClick={() => setView(AppView.DASHBOARD)}
+          className={`p-2 flex flex-col items-center gap-1 min-w-[64px] ${view === AppView.DASHBOARD ? 'text-cyan-600' : 'text-gray-400'}`}
         >
-          <QrCode size={32} />
+          <ClipboardList size={24} />
+          <span className="text-[10px] font-medium">Varasto</span>
         </button>
-      )}
+
+        <button 
+          onClick={() => setView(AppView.BORROWS)}
+          className={`p-2 flex flex-col items-center gap-1 min-w-[64px] ${view === AppView.BORROWS ? 'text-cyan-600' : 'text-gray-400'}`}
+        >
+          <Library size={24} />
+          <span className="text-[10px] font-medium">Lainat</span>
+          {getActiveBorrows().length > 0 && (
+            <span className="absolute top-2 translate-x-4 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full">
+              {getActiveBorrows().length}
+            </span>
+          )}
+        </button>
+        
+        <div className="relative -top-6">
+          <button 
+            onClick={() => setView(AppView.SCANNER)}
+            className="bg-gray-900 text-white p-4 rounded-full shadow-lg hover:bg-gray-800 hover:scale-105 transition-all"
+          >
+            <QrCode size={28} />
+          </button>
+        </div>
+
+        <button 
+          onClick={() => setView(AppView.LOGS)}
+          className={`p-2 flex flex-col items-center gap-1 min-w-[64px] ${view === AppView.LOGS ? 'text-cyan-600' : 'text-gray-400'}`}
+        >
+          <History size={24} />
+          <span className="text-[10px] font-medium">Logi</span>
+        </button>
+      </nav>
 
       {/* Overlays */}
       {view === AppView.SCANNER && (
@@ -490,6 +561,7 @@ const App: React.FC = () => {
           isSubmitting={isSubmitting}
           initialUser={userName || undefined}
           isUserMode={isUserMode}
+          defaultMode={view === AppView.BORROWS ? 'RETURN' : undefined}
         />
       )}
     </div>

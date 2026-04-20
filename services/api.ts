@@ -58,9 +58,9 @@ export const api = {
    * @param itemId 
    * @param quantity Negative for removing, Positive for adding
    * @param user 
-   * @param actionType Optional explicit action type (USE, RESTOCK, RETURN, CORRECTION)
+   * @param actionType Optional explicit action type (USE, RESTOCK, RETURN, CORRECTION, REPORT_BROKEN)
    */
-  logUsage: async (itemId: string, quantity: number, user: string, actionType: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION'): Promise<boolean> => {
+  logUsage: async (itemId: string, quantity: number, user: string, actionType: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION' | 'REPORT_BROKEN'): Promise<boolean> => {
     
     if (isDemo) {
       await delay(800);

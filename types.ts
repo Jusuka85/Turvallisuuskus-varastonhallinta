@@ -5,6 +5,8 @@ export interface InventoryItem {
   quantity: number;
   unit: string;
   qrCode: string;
+  itemType?: 'consumable' | 'borrowable';
+  borrowedQuantity?: number;
 }
 
 export interface UsageLog {
@@ -32,5 +34,6 @@ export enum AppView {
   ITEM_DETAILS = 'ITEM_DETAILS',
   LOGS = 'LOGS',
   PRINT_LABELS = 'PRINT_LABELS',
-  SIMPLE_SCANNER = 'SIMPLE_SCANNER'
+  SIMPLE_SCANNER = 'SIMPLE_SCANNER',
+  BORROWS = 'BORROWS'
 }

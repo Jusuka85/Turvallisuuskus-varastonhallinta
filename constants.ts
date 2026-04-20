@@ -10,7 +10,8 @@ export const INITIAL_ITEMS: InventoryItem[] = [
     category: 'Polttoharjoitus',
     quantity: 45,
     unit: 'kpl',
-    qrCode: 'ITEM-001'
+    qrCode: 'ITEM-001',
+    itemType: 'consumable'
   },
   {
     id: '2',
@@ -18,7 +19,8 @@ export const INITIAL_ITEMS: InventoryItem[] = [
     category: 'Rakennus',
     quantity: 120,
     unit: 'm',
-    qrCode: 'ITEM-002'
+    qrCode: 'ITEM-002',
+    itemType: 'consumable'
   },
   {
     id: '3',
@@ -26,7 +28,8 @@ export const INITIAL_ITEMS: InventoryItem[] = [
     category: 'Kalusto',
     quantity: 12,
     unit: 'kpl',
-    qrCode: 'ITEM-003'
+    qrCode: 'ITEM-003',
+    itemType: 'borrowable'
   },
   {
     id: '4',
@@ -34,7 +37,8 @@ export const INITIAL_ITEMS: InventoryItem[] = [
     category: 'Polttoharjoitus',
     quantity: 5,
     unit: 'l',
-    qrCode: 'ITEM-004'
+    qrCode: 'ITEM-004',
+    itemType: 'consumable'
   }
 ];
 
