@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { User, Check, ChevronRight } from 'lucide-react';
+import { User, Check, ArrowLeft } from 'lucide-react';
 
 interface UserNameSelectorProps {
   onSelect: (name: string) => void;
+  onBack?: () => void;
   organization: string;
 }
 
-const UserNameSelector: React.FC<UserNameSelectorProps> = ({ onSelect, organization }) => {
+const UserNameSelector: React.FC<UserNameSelectorProps> = ({ onSelect, onBack, organization }) => {
   const [name, setName] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -55,6 +56,17 @@ const UserNameSelector: React.FC<UserNameSelectorProps> = ({ onSelect, organizat
             <Check size={20} />
             Aloita käyttö
           </button>
+
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="w-full bg-transparent text-gray-500 p-2 rounded-xl font-medium flex items-center justify-center gap-2 hover:text-gray-700 transition-all"
+            >
+              <ArrowLeft size={16} />
+              Takaisin
+            </button>
+          )}
         </form>
 
         <p className="text-center text-xs text-gray-400 pt-4">

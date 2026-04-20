@@ -280,7 +280,13 @@ const App: React.FC = () => {
       <div className="fixed inset-0 bg-black z-50 flex flex-col">
         {/* Setup Gates */}
         {!organization && <OrganizationSelector onSelect={handleOrganizationSelect} />}
-        {organization && !userName && <UserNameSelector organization={organization} onSelect={handleUserNameSelect} />}
+        {organization && !userName && (
+          <UserNameSelector 
+            organization={organization} 
+            onSelect={handleUserNameSelect} 
+            onBack={() => setOrganization(null)} 
+          />
+        )}
 
         {/* Success Overlay */}
         {showSyncSuccess && (
@@ -333,7 +339,13 @@ const App: React.FC = () => {
     <div className="min-h-screen pb-20 max-w-lg mx-auto bg-gray-50 shadow-2xl overflow-hidden relative border-x border-gray-200">
       {/* Setup Gates */}
       {!organization && <OrganizationSelector onSelect={handleOrganizationSelect} />}
-      {organization && !userName && <UserNameSelector organization={organization} onSelect={handleUserNameSelect} />}
+      {organization && !userName && (
+        <UserNameSelector 
+          organization={organization} 
+          onSelect={handleUserNameSelect} 
+          onBack={() => setOrganization(null)} 
+        />
+      )}
 
       {/* Header */}
       <header className="bg-white text-gray-800 p-6 shadow-sm sticky top-0 z-10 border-b border-gray-200">
