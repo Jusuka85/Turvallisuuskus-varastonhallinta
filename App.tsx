@@ -30,6 +30,9 @@ const App: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [logFilter, setLogFilter] = useState<'day' | 'month' | 'year' | 'all'>('all');
+  const [logSearchTerm, setLogSearchTerm] = useState<string>('');
+  const [visibleLogsCount, setVisibleLogsCount] = useState<number>(5);
   const [statusMsg, setStatusMsg] = useState<{type: 'success' | 'error', text: string} | null>(null);
   
   const [logoClicks, setLogoClicks] = useState(0);
@@ -180,6 +183,68 @@ const App: React.FC = () => {
         ...b.item!,
         borrowedQuantity: Math.abs(b.balance)
       }));
+  };
+
+  const getFilteredLogs = () => {
+    let filtered = logs;
+    
+    // Time filter
+    if (logFilter !== 'all') {
+      const now = new Date();
+      filtered = filtered.filter(log => {
+        const logDate = new Date(log.timestamp);
+        if (logFilter === 'day') {
+          return logDate.toDateString() === now.toDateString();
+        }
+        if (logFilter === 'month') {
+          return logDate.getMonth() === now.getMonth() && logDate.getFullYear() === now.getFullYear();
+        }
+        if (logFilter === 'year') {
+          return logDate.getFullYear() === now.getFullYear();
+        }
+        return true;
+      });
+    }
+
+    // Username filter
+    if (logSearchTerm.trim()) {
+      filtered = filtered.filter(log => 
+        log.user?.toLowerCase().includes(logSearchTerm.toLowerCase()) ||
+        log.itemName.toLowerCase().includes(logSearchTerm.toLowerCase())
+      );
+    }
+
+    return filtered;
+  };
+
+  const getLogSummaryStats = () => {
+    const now = new Date();
+    const today = now.toDateString();
+    
+    // Start of week (Monday)
+    const startOfWeek = new Date(now);
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    startOfWeek.setDate(diff);
+    startOfWeek.setHours(0, 0, 0, 0);
+    
+    const stats = {
+      today: 0,
+      week: 0,
+      month: 0,
+      year: 0
+    };
+    
+    logs.forEach(log => {
+      const logDate = new Date(log.timestamp);
+      
+      if (logDate.toDateString() === today) stats.today++;
+      if (logDate >= startOfWeek) stats.week++;
+      if (logDate.getMonth() === now.getMonth() && logDate.getFullYear() === now.getFullYear()) stats.month++;
+      if (logDate.getFullYear() === now.getFullYear()) stats.year++;
+    });
+    
+    return stats;
   };
 
   const filteredItems = items.filter(i => 
@@ -469,9 +534,67 @@ const App: React.FC = () => {
 
         {view === AppView.LOGS && (
           <div className="space-y-4">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">Käyttöhistoria</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-lg font-bold text-gray-800">Käyttöhistoria</h2>
+            </div>
+
+            {/* Quick Stats Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+              {[
+                { label: 'Tänään', value: getLogSummaryStats().today, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                { label: 'Viikko', value: getLogSummaryStats().week, color: 'text-cyan-600', bg: 'bg-cyan-50' },
+                { label: 'Kuukausi', value: getLogSummaryStats().month, color: 'text-blue-600', bg: 'bg-blue-50' },
+                { label: 'Vuosi', value: getLogSummaryStats().year, color: 'text-indigo-600', bg: 'bg-indigo-50' }
+              ].map((stat, idx) => (
+                <div key={idx} className={`${stat.bg} p-2.5 rounded-lg border border-white/50 flex flex-col items-center justify-center shadow-sm`}>
+                  <span className={`text-xl font-black ${stat.color}`}>{stat.value}</span>
+                  <span className="text-[9px] uppercase font-bold text-gray-500 tracking-wider text-center">{stat.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Filter Buttons */}
+            <div className="flex gap-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
+              {[
+                { id: 'all', label: 'Kaikki' },
+                { id: 'day', label: 'Tänään' },
+                { id: 'month', label: 'Kuukausi' },
+                { id: 'year', label: 'Vuosi' }
+              ].map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => {
+                    setLogFilter(f.id as any);
+                    setVisibleLogsCount(5); // Reset limit when filter changes
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all border shrink-0 ${
+                    logFilter === f.id 
+                      ? 'bg-gray-900 text-white border-gray-900 shadow-sm' 
+                      : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Log Search */}
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+              <input 
+                type="text" 
+                placeholder="Hae käyttäjää tai tuotetta..." 
+                value={logSearchTerm}
+                onChange={(e) => {
+                  setLogSearchTerm(e.target.value);
+                  setVisibleLogsCount(5); // Reset limit when search changes
+                }}
+                className="w-full pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+              />
+            </div>
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 divide-y">
-              {logs.map((log) => (
+              {getFilteredLogs().slice(0, visibleLogsCount).map((log) => (
                 <div key={log.id} className="p-4 flex justify-between items-start">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -490,8 +613,17 @@ const App: React.FC = () => {
                   </div>
                 </div>
               ))}
-              {logs.length === 0 && <div className="p-6 text-center text-gray-400">Ei historiaa.</div>}
+              {getFilteredLogs().length === 0 && <div className="p-6 text-center text-gray-400">Ei historiaa.</div>}
             </div>
+
+            {getFilteredLogs().length > visibleLogsCount && (
+              <button 
+                onClick={() => setVisibleLogsCount(prev => prev + 5)}
+                className="w-full py-3 bg-white border border-gray-200 rounded-xl text-gray-600 font-bold text-sm hover:bg-gray-50 transition-colors shadow-sm"
+              >
+                Lataa lisää ({getFilteredLogs().length - visibleLogsCount} jäljellä)
+              </button>
+            )}
           </div>
         )}
 
@@ -534,7 +666,7 @@ const App: React.FC = () => {
           className={`p-2 flex flex-col items-center gap-1 min-w-[64px] ${view === AppView.LOGS ? 'text-cyan-600' : 'text-gray-400'}`}
         >
           <History size={24} />
-          <span className="text-[10px] font-medium">Logi</span>
+          <span className="text-[10px] font-medium">Loki</span>
         </button>
       </nav>
 
