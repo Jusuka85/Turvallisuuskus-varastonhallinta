@@ -129,10 +129,16 @@ const App: React.FC = () => {
     }
   };
 
-  const handleTransaction = async (qty: number, user: string, actionType: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION') => {
+  const handleTransaction = async (qty: number, user: string, actionType: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION' | 'REPORT_BROKEN') => {
     if (!selectedItem) return;
     setIsSubmitting(true);
     
+    // Update global user name if it was changed in the modal
+    if (user && user !== userName) {
+      setUserName(user);
+      localStorage.setItem(STORAGE_USER_KEY, user);
+    }
+
     const userWithOrg = organization ? `[${organization}] ${user}` : user;
     const success = await api.logUsage(selectedItem.id, qty, userWithOrg, actionType);
     
@@ -163,14 +169,19 @@ const App: React.FC = () => {
 
   const getActiveBorrows = () => {
     if (!userName || !organization) return [];
-    const userWithOrg = `[${organization}] ${userName}`;
+    const userWithOrg = `[${organization}] ${userName}`.trim();
     
     const borrowMap: Record<string, { item: InventoryItem | undefined, balance: number }> = {};
     
-    logs.filter(l => l.user === userWithOrg).forEach(log => {
+    logs.forEach(log => {
+      if (log.user?.trim() !== userWithOrg) return;
+      
+      // Only use/return actions should affect the personal borrowing balance
+      if (log.action !== 'USE' && log.action !== 'RETURN') return;
+
       if (!borrowMap[log.itemId]) {
         borrowMap[log.itemId] = { 
-          item: items.find(i => i.id === log.itemId), 
+          item: items.find(i => i.id.toString() === log.itemId.toString()), 
           balance: 0 
         };
       }
@@ -178,11 +189,38 @@ const App: React.FC = () => {
     });
     
     return Object.values(borrowMap)
-      .filter(b => b.balance < 0 && b.item && b.item.itemType === 'borrowable')
+      .filter(b => b.balance < 0 && b.item && (b.item.itemType?.toLowerCase() === 'borrowable' || b.item.itemType?.toLowerCase() === 'lainattava'))
       .map(b => ({
         ...b.item!,
         borrowedQuantity: Math.abs(b.balance)
       }));
+  };
+
+  const handleReturnAll = async () => {
+    const activeLoans = getActiveBorrows();
+    if (activeLoans.length === 0) return;
+    
+    if (!confirm(`Haluatko varmasti palauttaa kaikki ${activeLoans.length} lainaa?`)) return;
+    
+    setIsSubmitting(true);
+    const userWithOrg = organization ? `[${organization}] ${userName}` : userName;
+    
+    try {
+      // Log each item as fully returned sequentially
+      // Google Apps Script can have issues with many concurrent writes from the same source
+      for (const loan of activeLoans) {
+        await api.logUsage(loan.id, loan.borrowedQuantity, userWithOrg || 'Tuntematon', 'RETURN');
+      }
+      
+      await loadData();
+      setStatusMsg({ type: 'success', text: 'Kaikki lainat palautettu onnistuneesti!' });
+      setTimeout(() => setStatusMsg(null), 5000);
+    } catch (error) {
+      console.error(error);
+      setStatusMsg({ type: 'error', text: 'Joidenkin lainojen palautus epäonnistui.' });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getFilteredLogs = () => {
@@ -510,7 +548,18 @@ const App: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-gray-800">Omat lainat</h2>
-              <span className="text-xs bg-blue-100 text-blue-700 font-bold px-2 py-1 rounded-md">AKTIIVISET</span>
+              <div className="flex gap-2">
+                {getActiveBorrows().length > 0 && (
+                  <button 
+                    onClick={handleReturnAll}
+                    disabled={isSubmitting}
+                    className="text-[10px] bg-red-50 text-red-600 font-bold px-2 py-1 rounded-md border border-red-100 hover:bg-red-100 transition-colors"
+                  >
+                    PALAUTA KAIKKI
+                  </button>
+                )}
+                <span className="text-xs bg-blue-100 text-blue-700 font-bold px-2 py-1 rounded-md tracking-wider">AKTIIVISET</span>
+              </div>
             </div>
             
             <div className="space-y-3">
