@@ -129,42 +129,46 @@ const App: React.FC = () => {
     }
   };
 
-  const handleTransaction = async (qty: number, user: string, actionType: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION' | 'REPORT_BROKEN') => {
+  const handleTransaction = (qty: number, user: string, actionType: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION' | 'REPORT_BROKEN') => {
     if (!selectedItem) return;
-    setIsSubmitting(true);
     
+    // Capture current context
+    const itemToLog = selectedItem;
+    const userWithOrg = organization ? `[${organization}] ${user}` : user;
+
     // Update global user name if it was changed in the modal
     if (user && user !== userName) {
       setUserName(user);
       localStorage.setItem(STORAGE_USER_KEY, user);
     }
 
-    const userWithOrg = organization ? `[${organization}] ${user}` : user;
-    const success = await api.logUsage(selectedItem.id, qty, userWithOrg, actionType);
-    
-    if (success) {
-      await loadData(); // Refresh data immediately
-      
-      if (view === AppView.SIMPLE_SCANNER) {
-        // KIOSK MODE FLOW
-        setSelectedItem(null); // Close modal
-        setShowSyncSuccess(true); // Show big success screen
-        
-        // Hide success screen after delay and let Scanner remount
-        setTimeout(() => {
-          setShowSyncSuccess(false);
-        }, 2000);
-      } else {
-        // STANDARD FLOW
-        setStatusMsg({ type: 'success', text: 'Kirjaus tallennettu onnistuneesti!' });
-        setSelectedItem(null);
-        setTimeout(() => setStatusMsg(null), 5000);
-      }
+    // CLOSE MODAL IMMEDIATELY
+    setSelectedItem(null);
+
+    if (view === AppView.SIMPLE_SCANNER) {
+      setShowSyncSuccess(true);
+      // Wait a moment for success animation
+      setTimeout(() => setShowSyncSuccess(false), 1500);
     } else {
-      setStatusMsg({ type: 'error', text: 'Tallennus epäonnistui. Tarkista yhteys.' });
+      setStatusMsg({ type: 'success', text: 'Tallennetaan taustalla...' });
     }
-    
-    setIsSubmitting(false);
+
+    // BACKGROUND PROCESSING
+    (async () => {
+      setIsSubmitting(true);
+      const success = await api.logUsage(itemToLog.id, qty, userWithOrg, actionType);
+      
+      if (success) {
+        await loadData(); // Refresh data in background
+        if (view !== AppView.SIMPLE_SCANNER) {
+          setStatusMsg({ type: 'success', text: 'Kirjaus tallennettu!' });
+          setTimeout(() => setStatusMsg(null), 3000);
+        }
+      } else {
+        setStatusMsg({ type: 'error', text: 'Tallennus epäonnistui. Tarkista nettiyhteys.' });
+      }
+      setIsSubmitting(false);
+    })();
   };
 
   const getActiveBorrows = () => {
