@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { QrCode, ClipboardList, History, Search, RefreshCw, AlertCircle, Printer, ArrowDownLeft, ArrowUpRight, Plus, Wrench, Maximize, Minimize, CheckCircle, Library } from 'lucide-react';
+import { QrCode, ClipboardList, History, Search, RefreshCw, AlertCircle, Printer, ArrowDownLeft, ArrowUpRight, Plus, Wrench, Maximize, Minimize, CheckCircle, Library, ArrowDownToLine } from 'lucide-react';
 import { InventoryItem, UsageLog, AppView, Organization } from './types';
 import { api } from './services/api';
 import QRScanner from './components/QRScanner';
@@ -198,6 +198,76 @@ const App: React.FC = () => {
         ...b.item!,
         borrowedQuantity: Math.abs(b.balance)
       }));
+  };
+
+  const getAllActiveBorrows = () => {
+    const userMap: Record<string, Record<string, { item: InventoryItem | undefined, balance: number }>> = {};
+    
+    logs.forEach(log => {
+      // Only use/return actions affect borrowing balance
+      if (log.action !== 'USE' && log.action !== 'RETURN') return;
+      if (!log.user) return;
+
+      const userKey = log.user.trim();
+      if (!userMap[userKey]) {
+        userMap[userKey] = {};
+      }
+      
+      if (!userMap[userKey][log.itemId]) {
+        userMap[userKey][log.itemId] = { 
+          item: items.find(i => i.id.toString() === log.itemId.toString()), 
+          balance: 0 
+        };
+      }
+      userMap[userKey][log.itemId].balance += log.amountChanged;
+    });
+
+    const results = Object.entries(userMap).map(([user, borrows]) => {
+      const activeItems = Object.values(borrows)
+        .filter(b => b.balance < 0 && b.item && (b.item.itemType?.toLowerCase() === 'borrowable' || b.item.itemType?.toLowerCase() === 'lainattava'))
+        .map(b => ({
+          ...b.item!,
+          borrowedQuantity: Math.abs(b.balance)
+        }));
+      return { user, items: activeItems };
+    }).filter(u => u.items.length > 0);
+
+    return results;
+  };
+
+  const handleAdminReturnAllForUser = async (userBorrow: { user: string, items: any[] }) => {
+    if (!confirm(`Haluatko varmasti palauttaa KAIKKI (${userBorrow.items.length} kpl) lainat käyttäjältä ${userBorrow.user}?`)) return;
+    
+    setIsSubmitting(true);
+    try {
+      for (const item of userBorrow.items) {
+        await api.logUsage(item.id, item.borrowedQuantity, userBorrow.user, 'RETURN');
+      }
+      await loadData();
+      setStatusMsg({ type: 'success', text: `Kaikki lainat palautettu käyttäjältä ${userBorrow.user}.` });
+      setTimeout(() => setStatusMsg(null), 3000);
+    } catch (error) {
+      console.error(error);
+      setStatusMsg({ type: 'error', text: 'Joidenkin lainojen palautus epäonnistui.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleAdminReturn = async (itemId: string, qty: number, userIdentifier: string, itemName: string) => {
+    if (!confirm(`Haluatko varmasti merkitä palautetuksi: ${itemName} (${qty} kpl) käyttäjältä ${userIdentifier}?`)) return;
+    
+    setIsSubmitting(true);
+    const success = await api.logUsage(itemId, qty, userIdentifier, 'RETURN');
+    
+    if (success) {
+      await loadData();
+      setStatusMsg({ type: 'success', text: `Tuote ${itemName} palautettu käyttäjältä ${userIdentifier}.` });
+      setTimeout(() => setStatusMsg(null), 3000);
+    } else {
+      setStatusMsg({ type: 'error', text: 'Tallennus epäonnistui.' });
+    }
+    setIsSubmitting(false);
   };
 
   const handleReturnAll = async () => {
@@ -402,12 +472,13 @@ const App: React.FC = () => {
              />
              <h1 className="text-2xl font-bold tracking-tight text-gray-900">Harjoitusalue</h1>
              <div 
-               className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 cursor-pointer hover:opacity-70 transition-opacity"
+               className={`flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 transition-opacity ${selectedItem ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:opacity-70'}`}
                onClick={() => {
+                 if (selectedItem) return;
                  setOrganization(null);
                  setUserName(null);
                }}
-               title="Vaihda tietoja"
+               title={selectedItem ? "Viimeistele kirjaus ensin" : "Vaihda tietoja"}
              >
                <div className="flex items-center gap-1.5">
                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
@@ -448,14 +519,21 @@ const App: React.FC = () => {
 
         {/* Stats Summary - Hidden in User Mode */}
         {!isUserMode && (
-          <div className="flex gap-4">
-            <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-3 flex-1">
+          <div className="flex gap-2 sm:gap-4">
+            <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-3 flex-1 flex flex-col items-center">
                <span className="block text-2xl font-bold text-gray-900">{items.length}</span>
-               <span className="text-xs text-cyan-800 font-medium">Nimikettä</span>
+               <span className="text-[10px] text-cyan-800 font-bold uppercase">Nimikettä</span>
             </div>
-             <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-3 flex-1">
+             <div className="bg-cyan-50 border border-cyan-100 rounded-lg p-3 flex-1 flex flex-col items-center">
                <span className="block text-2xl font-bold text-gray-900">{logs.length}</span>
-               <span className="text-xs text-cyan-800 font-medium">Tapahtumaa</span>
+               <span className="text-[10px] text-cyan-800 font-bold uppercase">Tapahtumaa</span>
+            </div>
+            <div 
+              onClick={() => setView(AppView.ALL_BORROWS)}
+              className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex-1 flex flex-col items-center cursor-pointer hover:bg-blue-100 transition-colors"
+            >
+               <span className="block text-2xl font-bold text-blue-900">{getAllActiveBorrows().length}</span>
+               <span className="text-[10px] text-blue-800 font-bold uppercase">Lainassa</span>
             </div>
           </div>
         )}
@@ -597,6 +675,70 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {view === AppView.ALL_BORROWS && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold text-gray-800">Lainassa maailmalla</h2>
+              <button 
+                onClick={() => setView(AppView.DASHBOARD)}
+                className="text-[10px] font-bold text-gray-400 uppercase tracking-widest hover:text-gray-600"
+              >
+                Palaa
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {getAllActiveBorrows().length === 0 ? (
+                <div className="bg-white p-12 rounded-2xl border border-dashed border-gray-200 text-center text-gray-400">
+                  <p>Ei aktiivisia lainoja kenelläkään.</p>
+                </div>
+              ) : (
+                getAllActiveBorrows().map((userBorrow, idx) => (
+                  <div key={idx} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-100 flex justify-between items-center group/header">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{userBorrow.user}</span>
+                        <button 
+                          onClick={() => handleAdminReturnAllForUser(userBorrow)}
+                          disabled={isSubmitting}
+                          className="opacity-0 group-hover/header:opacity-100 text-[9px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-black uppercase tracking-tighter hover:bg-red-200 transition-all"
+                        >
+                          Palauta Kaikki
+                        </button>
+                      </div>
+                      <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">
+                        {userBorrow.items.length} tuote{userBorrow.items.length > 1 ? 'tta' : ''}
+                      </span>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                      {userBorrow.items.map(item => (
+                        <div key={item.id} className="p-4 flex justify-between items-center group">
+                          <div>
+                            <p className="font-semibold text-gray-800">{item.name}</p>
+                            <p className="text-[10px] text-gray-400">{item.category}</p>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-blue-600">{item.borrowedQuantity} {item.unit}</p>
+                            </div>
+                            <button 
+                              onClick={() => handleAdminReturn(item.id, item.borrowedQuantity, userBorrow.user, item.name)}
+                              disabled={isSubmitting}
+                              className="opacity-0 group-hover:opacity-100 focus:opacity-100 bg-red-50 text-red-600 p-2 rounded-lg hover:bg-red-100 transition-all"
+                              title="Palauta tämä"
+                            >
+                              <ArrowDownToLine size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
         {view === AppView.LOGS && (
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-2">

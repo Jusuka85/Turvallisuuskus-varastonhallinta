@@ -262,15 +262,10 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Käyttäjän nimi</label>
-            <input
-              type="text"
-              value={user}
-              onChange={(e) => setUser(e.target.value)}
-              placeholder="Esim. Matti M."
-              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              required
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Käyttäjä</label>
+            <div className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-600 font-medium">
+              {user}
+            </div>
           </div>
         </div>
 
