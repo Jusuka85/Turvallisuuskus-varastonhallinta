@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { QrCode, ClipboardList, History, Search, RefreshCw, AlertCircle, Printer, ArrowDownLeft, ArrowUpRight, Plus, Wrench, Maximize, Minimize, CheckCircle, Library, ArrowDownToLine } from 'lucide-react';
+import { QrCode, ClipboardList, History, Search, RefreshCw, AlertCircle, Printer, ArrowDownLeft, ArrowUpRight, Plus, Wrench, Maximize, Minimize, CheckCircle, Library, ArrowDownToLine, Download } from 'lucide-react';
 import { InventoryItem, UsageLog, AppView, Organization } from './types';
 import { api } from './services/api';
 import QRScanner from './components/QRScanner';
@@ -7,6 +7,9 @@ import UsageModal from './components/UsageModal';
 import LabelPrinter from './components/LabelPrinter';
 import OrganizationSelector from './components/OrganizationSelector';
 import UserNameSelector from './components/UserNameSelector';
+import AddItemModal from './components/AddItemModal';
+
+import { initAuth } from './lib/firebase';
 
 const STORAGE_ORG_KEY = 'rescue_inventory_org';
 const STORAGE_USER_KEY = 'rescue_inventory_last_user';
@@ -40,11 +43,20 @@ const App: React.FC = () => {
 
   // State for Kiosk Mode Success Overlay
   const [showSyncSuccess, setShowSyncSuccess] = useState<boolean>(false);
-
+  
   const loadData = useCallback(async () => {
     setLoading(true);
     setStatusMsg(null);
     try {
+      // Ensure auth is initialized before fetching
+      const authSuccess = await initAuth();
+      if (!authSuccess) {
+        setStatusMsg({
+          type: 'error',
+          text: 'Kirjautuminen epäonnistui. Varmista Firebase Consolesta, että "Anonymous Authentication" on otettu käyttöön.'
+        });
+      }
+      
       // Load inventory first to ensure main view works
       const itemsData = await api.getInventory();
       setItems(itemsData);
@@ -61,7 +73,7 @@ const App: React.FC = () => {
       console.error(e);
       setStatusMsg({ 
         type: 'error', 
-        text: 'Yhteysvirhe. Tarkista että Google Script on julkaistu "Anyone" -oikeuksilla.' 
+        text: 'Yhteysvirhe tietokantaan. Tarkista Firebase-asetukset.' 
       });
     } finally {
       setLoading(false);
@@ -359,6 +371,50 @@ const App: React.FC = () => {
     return stats;
   };
 
+  const handleAddItem = async (newItem: Omit<InventoryItem, 'id' | 'borrowedQuantity'>) => {
+    setIsSubmitting(true);
+    try {
+      const result = await api.addItem(newItem);
+      if (result) {
+        setStatusMsg({ type: 'success', text: `Tuote "${newItem.name}" lisätty onnistuneesti.` });
+        setView(AppView.DASHBOARD);
+        loadData();
+      } else {
+        setStatusMsg({ type: 'error', text: 'Tuotteen lisääminen epäonnistui.' });
+      }
+    } catch (e) {
+      console.error(e);
+      setStatusMsg({ type: 'error', text: 'Virhe järjestelmässä.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const exportLogsToCSV = () => {
+    if (logs.length === 0) return;
+    
+    const headers = ['Aika', 'Tuote', 'Käyttäjä', 'Toiminto', 'Muutos'];
+    const csvRows = [
+      headers.join(';'),
+      ...logs.map(log => [
+        new Date(log.timestamp).toLocaleString('fi-FI'),
+        log.itemName,
+        log.user,
+        getActionLabel(log.action),
+        log.amountChanged
+      ].join(';'))
+    ];
+    
+    const blob = new Blob(['\ufeff' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `pelastusvarasto_loki_${new Date().toLocaleDateString('fi-FI')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const filteredItems = items.filter(i => 
     i.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     i.category.toLowerCase().includes(searchTerm.toLowerCase())
@@ -570,6 +626,15 @@ const App: React.FC = () => {
             <div className="mt-8">
               <div className="flex justify-between items-center mb-4">
                  <h2 className="text-lg font-bold text-gray-800">Varastotilanne</h2>
+                 {!isUserMode && (
+                   <button 
+                     onClick={() => setView(AppView.ADD_ITEM)}
+                     className="flex items-center gap-1.5 text-xs font-bold bg-cyan-600 text-white px-3 py-1.5 rounded-lg hover:bg-cyan-700 transition-colors shadow-sm"
+                   >
+                     <Plus size={14} />
+                     Uusi nimike
+                   </button>
+                 )}
               </div>
               
               <div className="relative mb-4">
@@ -743,6 +808,15 @@ const App: React.FC = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-bold text-gray-800">Käyttöhistoria</h2>
+              {!isUserMode && (
+                <button 
+                  onClick={exportLogsToCSV}
+                  className="flex items-center gap-1.5 text-xs font-bold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors shadow-sm"
+                >
+                  <Download size={14} />
+                  Lataa CSV
+                </button>
+              )}
             </div>
 
             {/* Quick Stats Grid */}
@@ -901,6 +975,14 @@ const App: React.FC = () => {
           initialUser={userName || undefined}
           isUserMode={isUserMode}
           defaultMode={view === AppView.BORROWS ? 'RETURN' : undefined}
+        />
+      )}
+
+      {view === AppView.ADD_ITEM && (
+        <AddItemModal 
+          onConfirm={handleAddItem}
+          onCancel={() => setView(AppView.DASHBOARD)}
+          isSubmitting={isSubmitting}
         />
       )}
     </div>

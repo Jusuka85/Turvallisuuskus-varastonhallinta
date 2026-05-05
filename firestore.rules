@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // --- Entities ---
+
+    // Items Collection
+    match /items/{itemId} {
+      function isValidItem(data) {
+        return data.keys().hasAll(['name', 'category', 'quantity', 'unit', 'qrCode']) &&
+               data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+               data.category is string && data.category.size() > 0 && data.category.size() <= 100 &&
+               data.quantity is number &&
+               data.unit is string && data.unit.size() > 0 && data.unit.size() <= 20 &&
+               data.qrCode is string && data.qrCode.size() > 0 && data.qrCode.size() <= 100 &&
+               (data.get('itemType', 'consumable') in ['consumable', 'borrowable']);
+      }
+
+      allow read: if true; // Allow unauthenticated reads for Low-Threshold access
+      allow create, update: if isSignedIn() && isValidItem(request.resource.data);
+      allow delete: if false; // Deletion not allowed via client
+    }
+
+    // Logs Collection
+    match /logs/{logId} {
+      function isValidLog(data) {
+        return data.keys().hasAll(['timestamp', 'itemId', 'itemName', 'user', 'amountChanged', 'action']) &&
+               data.timestamp is string &&
+               data.itemId is string && isValidId(data.itemId) &&
+               data.itemName is string && data.itemName.size() > 0 &&
+               data.user is string && data.user.size() > 0 && data.user.size() <= 200 &&
+               data.amountChanged is number &&
+               data.action in ['USE', 'RESTOCK', 'RETURN', 'CORRECTION', 'REPORT_BROKEN'];
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidLog(request.resource.data);
+      allow update, delete: if false; // Logs are immutable
+    }
+  }
+}

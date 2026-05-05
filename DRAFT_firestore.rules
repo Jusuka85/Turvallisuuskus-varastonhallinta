@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Auth helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Items Collection
+    match /items/{itemId} {
+      function isValidItem(data) {
+        return data.keys().hasAll(['name', 'category', 'quantity', 'unit', 'qrCode']) &&
+               data.get('name', '') is string && data.name.size() <= 200 &&
+               data.get('category', '') is string && data.category.size() <= 100 &&
+               data.get('quantity', 0) is number &&
+               data.get('unit', '') is string && data.unit.size() <= 20 &&
+               data.get('qrCode', '') is string && data.qrCode.size() <= 100;
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidItem(request.resource.data) && isValidId(itemId);
+      allow update: if isSignedIn() && isValidItem(request.resource.data) && (
+        // Only quantity should normally be updated via logUsage, but we allow full update for admins/setup
+        // In this anonymous model, we rely on the schema validation.
+        request.resource.data.diff(resource.data).affectedKeys().hasAny(['quantity', 'name', 'category', 'unit', 'qrCode', 'itemType'])
+      );
+    }
+
+    // Logs Collection
+    match /logs/{logId} {
+      function isValidLog(data) {
+        return data.keys().hasAll(['timestamp', 'itemId', 'itemName', 'user', 'amountChanged', 'action']) &&
+               data.get('timestamp', '') is string &&
+               data.get('itemId', '') is string && isValidId(data.itemId) &&
+               data.get('itemName', '') is string &&
+               data.get('user', '') is string && data.user.size() <= 200 &&
+               data.get('amountChanged', 0) is number &&
+               data.get('action', '') in ['USE', 'RESTOCK', 'RETURN', 'CORRECTION', 'REPORT_BROKEN'];
+      }
+
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidLog(request.resource.data);
+    }
+  }
+}

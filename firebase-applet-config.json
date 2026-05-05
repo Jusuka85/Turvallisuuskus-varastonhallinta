@@ -1,0 +1,10 @@
+{
+  "projectId": "pelastusvarasto",
+  "appId": "1:371405450041:web:18f5a384cc37dcbf4bd6e8",
+  "apiKey": "AIzaSyABShp6Kv4PDPAikz74oittgpxTcUKUDhE",
+  "authDomain": "pelastusvarasto.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-413fecf7-578b-4058-8aac-5b671119fd5f",
+  "storageBucket": "pelastusvarasto.firebasestorage.app",
+  "messagingSenderId": "371405450041",
+  "measurementId": ""
+}

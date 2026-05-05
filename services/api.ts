@@ -1,169 +1,131 @@
-import { InventoryItem, UsageLog, ApiResponse } from '../types';
-import { INITIAL_ITEMS, INITIAL_LOGS, GOOGLE_SCRIPT_URL } from '../constants';
+import { 
+  collection, 
+  getDocs, 
+  doc, 
+  updateDoc, 
+  addDoc, 
+  query, 
+  orderBy, 
+  limit, 
+  getDoc,
+  serverTimestamp,
+  increment,
+  writeBatch
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { InventoryItem, UsageLog } from '../types';
+import { INITIAL_ITEMS } from '../constants';
 
-// Local storage keys for mock persistence
-const STORAGE_ITEMS_KEY = 'rescue_inventory_items';
-const STORAGE_LOGS_KEY = 'rescue_inventory_logs';
-
-const isDemo = !GOOGLE_SCRIPT_URL;
-
-// Helper to simulate delay
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const ITEMS_COLLECTION = 'items';
+const LOGS_COLLECTION = 'logs';
 
 export const api = {
   /**
-   * Fetch all inventory items
+   * Fetch all inventory items from Firestore
    */
   getInventory: async (): Promise<InventoryItem[]> => {
-    if (isDemo) {
-      await delay(600);
-      const stored = localStorage.getItem(STORAGE_ITEMS_KEY);
-      if (stored) return JSON.parse(stored);
-      localStorage.setItem(STORAGE_ITEMS_KEY, JSON.stringify(INITIAL_ITEMS));
-      return INITIAL_ITEMS;
-    } else {
-      try {
-        // Add timestamp to prevent caching
-        const params = new URLSearchParams({ 
-          action: 'getInventory', 
-          _t: Date.now().toString() 
+    try {
+      const q = query(collection(db, ITEMS_COLLECTION), orderBy('name'));
+      const snapshot = await getDocs(q);
+      
+      // If empty, seed with initial items (First time setup)
+      if (snapshot.empty) {
+        const batch = writeBatch(db);
+        INITIAL_ITEMS.forEach(item => {
+          const docRef = doc(collection(db, ITEMS_COLLECTION), item.id);
+          batch.set(docRef, item);
         });
-        
-        const response = await fetch(`${GOOGLE_SCRIPT_URL}?${params.toString()}`, {
-          method: 'GET',
-          redirect: 'follow'
-        });
-        
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data: ApiResponse<InventoryItem[]> = await response.json();
-        
-        if (!data.success) {
-           console.error("API reported error:", data.message);
-           return [];
-        }
-        
-        return data.data || [];
-      } catch (error) {
-        console.error("API Error getInventory. Check if script is deployed as 'Anyone'.", error);
-        throw error; // Re-throw so App can show error state
+        await batch.commit();
+        return INITIAL_ITEMS;
       }
+
+      return snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as InventoryItem[];
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, ITEMS_COLLECTION);
+      return [];
     }
   },
 
   /**
-   * Log usage and update stock
-   * @param itemId 
-   * @param quantity Negative for removing, Positive for adding
-   * @param user 
-   * @param actionType Optional explicit action type (USE, RESTOCK, RETURN, CORRECTION, REPORT_BROKEN)
+   * Log usage and update stock atomically
    */
   logUsage: async (itemId: string, quantity: number, user: string, actionType: 'USE' | 'RESTOCK' | 'RETURN' | 'CORRECTION' | 'REPORT_BROKEN'): Promise<boolean> => {
-    
-    if (isDemo) {
-      await delay(800);
+    try {
+      const itemRef = doc(db, ITEMS_COLLECTION, itemId);
+      const itemSnap = await getDoc(itemRef);
       
-      // Update Items
-      const storedItemsStr = localStorage.getItem(STORAGE_ITEMS_KEY);
-      const items: InventoryItem[] = storedItemsStr ? JSON.parse(storedItemsStr) : INITIAL_ITEMS;
-      const updatedItems = items.map(item => {
-        if (item.id === itemId) {
-          return { ...item, quantity: item.quantity + quantity }; 
-        }
-        return item;
-      });
-      localStorage.setItem(STORAGE_ITEMS_KEY, JSON.stringify(updatedItems));
+      if (!itemSnap.exists()) {
+        console.error("Item not found:", itemId);
+        return false;
+      }
 
-      // Add Log
-      const storedLogsStr = localStorage.getItem(STORAGE_LOGS_KEY);
-      const logs: UsageLog[] = storedLogsStr ? JSON.parse(storedLogsStr) : INITIAL_LOGS;
-      
-      const targetItem = items.find(i => i.id === itemId);
-      
-      const newLog: UsageLog = {
-        id: Date.now().toString(),
-        timestamp: new Date().toISOString(),
+      const itemData = itemSnap.data() as InventoryItem;
+      const batch = writeBatch(db);
+
+      // Update quantity
+      batch.update(itemRef, {
+        quantity: increment(quantity)
+      });
+
+      // Create log
+      const logRef = doc(collection(db, LOGS_COLLECTION));
+      const logData: Omit<UsageLog, 'id'> & { timestamp: any } = {
+        timestamp: new Date().toISOString(), // Keeping ISO string as per types.ts, but could use serverTimestamp()
         itemId,
-        itemName: targetItem?.name || 'Unknown',
+        itemName: itemData.name,
         user,
         amountChanged: quantity,
         action: actionType
       };
       
-      localStorage.setItem(STORAGE_LOGS_KEY, JSON.stringify([newLog, ...logs]));
+      batch.set(logRef, logData);
+
+      await batch.commit();
       return true;
-    } else {
-      // Real API Call
-      try {
-        const payload = {
-          action: 'logUsage',
-          itemId,
-          quantity, 
-          user,
-          actionType // Send explicit type
-        };
-        
-        // Critical: use text/plain to avoid CORS preflight (OPTIONS) which GAS doesn't handle
-        // backend-script.gs must use JSON.parse(e.postData.contents)
-        const response = await fetch(GOOGLE_SCRIPT_URL, {
-          method: 'POST',
-          redirect: 'follow',
-          headers: {
-            'Content-Type': 'text/plain;charset=utf-8',
-          },
-          body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-           throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        if (!data.success) {
-          console.error("API returned failure:", data.message);
-          return false;
-        }
-        return true;
-      } catch (error) {
-        console.error("API Error logUsage", error);
-        return false;
-      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `logUsage/${itemId}`);
+      return false;
     }
   },
 
   /**
-   * Get logs
+   * Get recent logs from Firestore
    */
   getLogs: async (): Promise<UsageLog[]> => {
-    if (isDemo) {
-      await delay(500);
-      const stored = localStorage.getItem(STORAGE_LOGS_KEY);
-      if (stored) return JSON.parse(stored);
-      return INITIAL_LOGS;
-    } else {
-       try {
-        const params = new URLSearchParams({ 
-          action: 'getLogs',
-          _t: Date.now().toString() 
-        });
-        
-        const response = await fetch(`${GOOGLE_SCRIPT_URL}?${params.toString()}`, {
-           method: 'GET',
-           redirect: 'follow'
-        });
-        
-        if (!response.ok) {
-           throw new Error(`HTTP error! status: ${response.status}`);
-        }
+    try {
+      const q = query(
+        collection(db, LOGS_COLLECTION), 
+        orderBy('timestamp', 'desc'),
+        limit(100)
+      );
+      const snapshot = await getDocs(q);
+      
+      return snapshot.docs.map(doc => ({
+        ...doc.data(),
+        id: doc.id
+      })) as UsageLog[];
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, LOGS_COLLECTION);
+      return [];
+    }
+  },
 
-        const data: ApiResponse<UsageLog[]> = await response.json();
-        return data.data || [];
-      } catch (error) {
-        console.error("API Error getLogs", error);
-        return [];
-      }
+  /**
+   * Add a new item to the inventory
+   */
+  addItem: async (item: Omit<InventoryItem, 'id' | 'borrowedQuantity'>): Promise<string | null> => {
+    try {
+      const docRef = await addDoc(collection(db, ITEMS_COLLECTION), {
+        ...item,
+        borrowedQuantity: 0
+      });
+      return docRef.id;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, ITEMS_COLLECTION);
+      return null;
     }
   }
 };

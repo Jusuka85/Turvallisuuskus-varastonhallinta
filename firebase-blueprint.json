@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "InventoryItem": {
+      "title": "Inventory Item",
+      "description": "An item in the inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unit": { "type": "string" },
+        "qrCode": { "type": "string" },
+        "itemType": { "type": "string", "enum": ["consumable", "borrowable"] },
+        "borrowedQuantity": { "type": "number" }
+      },
+      "required": ["name", "category", "quantity", "unit", "qrCode"]
+    },
+    "UsageLog": {
+      "title": "Usage Log",
+      "description": "A log of inventory changes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "itemId": { "type": "string" },
+        "itemName": { "type": "string" },
+        "user": { "type": "string" },
+        "amountChanged": { "type": "number" },
+        "action": { "type": "string", "enum": ["USE", "RESTOCK", "RETURN", "CORRECTION", "REPORT_BROKEN"] }
+      },
+      "required": ["timestamp", "itemId", "itemName", "user", "amountChanged", "action"]
+    }
+  },
+  "firestore": {
+    "/items": {
+      "schema": "InventoryItem",
+      "description": "Collection of inventory items"
+    },
+    "/logs": {
+      "schema": "UsageLog",
+      "description": "Collection of usage logs"
+    }
+  }
+}
