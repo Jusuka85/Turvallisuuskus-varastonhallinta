@@ -10,13 +10,14 @@ interface UsageModalProps {
   initialUser?: string;
   isUserMode?: boolean;
   defaultMode?: ActionMode;
+  isScannedSelection?: boolean;
 }
 
 type ActionMode = 'USE' | 'RETURN' | 'RESTOCK' | 'CORRECTION' | 'REPORT_BROKEN';
 
 const STORAGE_USER_KEY = 'rescue_inventory_last_user';
 
-const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSubmitting, initialUser, isUserMode, defaultMode }) => {
+const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSubmitting, initialUser, isUserMode, defaultMode, isScannedSelection = false }) => {
   const [amount, setAmount] = useState<string>('1');
   
   // Initialize user from prop or LocalStorage
@@ -24,8 +25,10 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
     return initialUser || localStorage.getItem(STORAGE_USER_KEY) || '';
   });
   
+  const showUseOption = !isUserMode || isScannedSelection;
+  
   const [mode, setMode] = useState<ActionMode>(() => {
-    return defaultMode || 'USE';
+    return defaultMode || (showUseOption ? 'USE' : 'RETURN');
   });
   const [reportNote, setReportNote] = useState<string>('');
 
@@ -162,16 +165,18 @@ const UsageModal: React.FC<UsageModalProps> = ({ item, onConfirm, onCancel, isSu
           </div>
 
           {/* Mode Toggle */}
-          <div className={`grid ${isUserMode ? 'grid-cols-3' : 'grid-cols-5'} bg-gray-100 p-1 rounded-lg gap-1`}>
-            <button
-              type="button"
-              onClick={() => handleModeChange('USE')}
-              className={`py-2 text-[10px] font-medium rounded-md transition-all flex flex-col items-center gap-1
-                ${mode === 'USE' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
-            >
-              <ArrowUpFromLine size={16} />
-              {item.itemType === 'borrowable' ? 'Lainaa' : 'Ota'}
-            </button>
+          <div className={`grid ${!isUserMode ? 'grid-cols-5' : (showUseOption ? 'grid-cols-3' : 'grid-cols-2')} bg-gray-100 p-1 rounded-lg gap-1`}>
+            {showUseOption && (
+              <button
+                type="button"
+                onClick={() => handleModeChange('USE')}
+                className={`py-2 text-[10px] font-medium rounded-md transition-all flex flex-col items-center gap-1
+                  ${mode === 'USE' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'}`}
+              >
+                <ArrowUpFromLine size={16} />
+                {item.itemType === 'borrowable' ? 'Lainaa' : 'Ota'}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => handleModeChange('RETURN')}

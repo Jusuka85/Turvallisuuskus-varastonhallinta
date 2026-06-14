@@ -31,6 +31,8 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<UsageLog[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
+  const [isScannedSelection, setIsScannedSelection] = useState<boolean>(false);
+  const [scanRequiredItem, setScanRequiredItem] = useState<InventoryItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [logFilter, setLogFilter] = useState<'day' | 'month' | 'year' | 'all'>('all');
@@ -92,6 +94,7 @@ const App: React.FC = () => {
     
     if (found) {
       setSelectedItem(found);
+      setIsScannedSelection(true);
       // If NOT in simple/kiosk mode, switch back to dashboard to show modal over it
       // If in SIMPLE_SCANNER mode, we stay in that view, but the conditional rendering
       // will hide the scanner and show the modal.
@@ -156,6 +159,7 @@ const App: React.FC = () => {
 
     // CLOSE MODAL IMMEDIATELY
     setSelectedItem(null);
+    setIsScannedSelection(false);
 
     if (view === AppView.SIMPLE_SCANNER) {
       setShowSyncSuccess(true);
@@ -495,6 +499,7 @@ const App: React.FC = () => {
               isSubmitting={isSubmitting}
               initialUser={userName || undefined}
               isUserMode={isUserMode}
+              isScannedSelection={true}
             />
           </div>
         )}
@@ -660,7 +665,14 @@ const App: React.FC = () => {
                   filteredItems.map(item => (
                     <div 
                       key={item.id} 
-                      onClick={() => setSelectedItem(item)}
+                      onClick={() => {
+                        if (isUserMode) {
+                          setScanRequiredItem(item);
+                        } else {
+                          setSelectedItem(item);
+                          setIsScannedSelection(false);
+                        }
+                      }}
                       className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center active:bg-gray-50 cursor-pointer"
                     >
                       <div>
@@ -970,12 +982,59 @@ const App: React.FC = () => {
         <UsageModal 
           item={selectedItem}
           onConfirm={handleTransaction}
-          onCancel={() => setSelectedItem(null)}
+          onCancel={() => {
+            setSelectedItem(null);
+            setIsScannedSelection(false);
+          }}
           isSubmitting={isSubmitting}
           initialUser={userName || undefined}
           isUserMode={isUserMode}
           defaultMode={view === AppView.BORROWS ? 'RETURN' : undefined}
+          isScannedSelection={isScannedSelection}
         />
+      )}
+
+      {scanRequiredItem && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-sm bg-white rounded-2xl shadow-2xl p-6 border border-gray-100 text-center relative overflow-hidden flex flex-col items-center">
+            {/* Top decorative lock icon */}
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-4">
+              <QrCode size={36} className="text-cyan-600 animate-pulse" />
+            </div>
+
+            <h3 className="text-xl font-extrabold text-gray-900 mb-2">QR-skannaus vaaditaan!</h3>
+            
+            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+              Tavallisessa käyttäjätilassa tuotetta <strong className="text-gray-950">"{scanRequiredItem.name}"</strong> ei voi ottaa tai lainata suoraan luettelosta käsin.
+              <br /><br />
+              Varmistaaksemme paikallaolon ja saldon paikkansapitävyyden, tuotteen QR-koodi <strong>on skannattava paikan päällä</strong> varastossa uutta lainaa tai ottoa varten.
+            </p>
+
+            <div className="flex flex-col gap-3 w-full">
+              <button
+                onClick={() => {
+                  setScanRequiredItem(null);
+                  setView(AppView.SCANNER);
+                }}
+                className="w-full py-3.5 px-4 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-xl shadow-md flex justify-center items-center gap-2 transition-transform active:scale-95"
+              >
+                <QrCode size={18} />
+                Avaa QR-skanneri
+              </button>
+              
+              <button
+                onClick={() => setScanRequiredItem(null)}
+                className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-colors"
+              >
+                Sulje
+              </button>
+            </div>
+            
+            <div className="mt-4 text-[10px] text-gray-400 font-medium uppercase tracking-wider text-center">
+              Aktiiviset lainasi voit edelleen palauttaa kotoa käsin ilman skannausta!
+            </div>
+          </div>
+        </div>
       )}
 
       {view === AppView.ADD_ITEM && (
