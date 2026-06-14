@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { QrCode, ClipboardList, History, Search, RefreshCw, AlertCircle, Printer, ArrowDownLeft, ArrowUpRight, Plus, Wrench, Maximize, Minimize, CheckCircle, Library, ArrowDownToLine, Download } from 'lucide-react';
+import { QrCode, ClipboardList, History, Search, RefreshCw, AlertCircle, Printer, ArrowDownLeft, ArrowUpRight, Plus, Wrench, Maximize, Minimize, CheckCircle, Library, ArrowDownToLine, Download, Pencil } from 'lucide-react';
 import { InventoryItem, UsageLog, AppView, Organization } from './types';
 import { api } from './services/api';
 import QRScanner from './components/QRScanner';
@@ -8,6 +8,7 @@ import LabelPrinter from './components/LabelPrinter';
 import OrganizationSelector from './components/OrganizationSelector';
 import UserNameSelector from './components/UserNameSelector';
 import AddItemModal from './components/AddItemModal';
+import EditItemModal from './components/EditItemModal';
 
 import { initAuth } from './lib/firebase';
 
@@ -33,6 +34,7 @@ const App: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isScannedSelection, setIsScannedSelection] = useState<boolean>(false);
   const [scanRequiredItem, setScanRequiredItem] = useState<InventoryItem | null>(null);
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [logFilter, setLogFilter] = useState<'day' | 'month' | 'year' | 'all'>('all');
@@ -394,6 +396,44 @@ const App: React.FC = () => {
     }
   };
 
+  const handleEditItem = async (id: string, updatedFields: Omit<InventoryItem, 'id' | 'borrowedQuantity'>) => {
+    setIsSubmitting(true);
+    try {
+      const success = await api.updateItem(id, updatedFields);
+      if (success) {
+        setStatusMsg({ type: 'success', text: `Tuote "${updatedFields.name}" päivitetty onnistuneesti.` });
+        setEditingItem(null);
+        loadData();
+      } else {
+        setStatusMsg({ type: 'error', text: 'Tuotteen muokkaus epäonnistui.' });
+      }
+    } catch (error) {
+      console.error(error);
+      setStatusMsg({ type: 'error', text: 'Virhe muokkauksessa.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteItem = async (id: string) => {
+    setIsSubmitting(true);
+    try {
+      const success = await api.deleteItem(id);
+      if (success) {
+        setStatusMsg({ type: 'success', text: `Tuote poistettu onnistuneesti.` });
+        setEditingItem(null);
+        loadData();
+      } else {
+        setStatusMsg({ type: 'error', text: 'Tuotteen poistaminen epäonnistui.' });
+      }
+    } catch (error) {
+      console.error(error);
+      setStatusMsg({ type: 'error', text: 'Virhe poistettaessa.' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const exportLogsToCSV = () => {
     if (logs.length === 0) return;
     
@@ -689,11 +729,27 @@ const App: React.FC = () => {
                           )}
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className={`text-xl font-mono font-bold ${item.quantity < 5 ? 'text-red-500' : 'text-gray-800'}`}>
-                          {item.quantity}
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className={`text-xl font-mono font-bold ${item.quantity < 5 ? 'text-red-500' : 'text-gray-800'}`}>
+                            {item.quantity}
+                          </div>
+                          <span className="text-xs text-gray-400">{item.unit}</span>
                         </div>
-                        <span className="text-xs text-gray-400">{item.unit}</span>
+
+                        {!isUserMode && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingItem(item);
+                            }}
+                            className="p-2 bg-gray-50 hover:bg-cyan-50 text-gray-500 hover:text-cyan-600 rounded-lg transition-colors border border-gray-100 flex items-center justify-center"
+                            title="Muokkaa"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))
@@ -1041,6 +1097,16 @@ const App: React.FC = () => {
         <AddItemModal 
           onConfirm={handleAddItem}
           onCancel={() => setView(AppView.DASHBOARD)}
+          isSubmitting={isSubmitting}
+        />
+      )}
+
+      {editingItem && (
+        <EditItemModal
+          item={editingItem}
+          onConfirm={handleEditItem}
+          onDelete={handleDeleteItem}
+          onCancel={() => setEditingItem(null)}
           isSubmitting={isSubmitting}
         />
       )}

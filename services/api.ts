@@ -10,7 +10,8 @@ import {
   getDoc,
   serverTimestamp,
   increment,
-  writeBatch
+  writeBatch,
+  deleteDoc
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { InventoryItem, UsageLog } from '../types';
@@ -126,6 +127,34 @@ export const api = {
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, ITEMS_COLLECTION);
       return null;
+    }
+  },
+
+  /**
+   * Update an existing item's metadata and/or quantity
+   */
+  updateItem: async (itemId: string, updatedItem: Partial<Omit<InventoryItem, 'id'>>): Promise<boolean> => {
+    try {
+      const itemRef = doc(db, ITEMS_COLLECTION, itemId);
+      await updateDoc(itemRef, updatedItem);
+      return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `updateItem/${itemId}`);
+      return false;
+    }
+  },
+
+  /**
+   * Delete an existing item from Firestore
+   */
+  deleteItem: async (itemId: string): Promise<boolean> => {
+    try {
+      const itemRef = doc(db, ITEMS_COLLECTION, itemId);
+      await deleteDoc(itemRef);
+      return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `deleteItem/${itemId}`);
+      return false;
     }
   }
 };
